@@ -2,7 +2,7 @@
     "name": "actor-zillow-api",
     "version": "0.0.1",
     "dependencies": {
-        "apify": "^0.19.1"
+        "apify": "0.22.4"
     },
     "scripts": {
         "start": "node main.js"
