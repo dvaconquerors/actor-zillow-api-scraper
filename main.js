@@ -172,8 +172,8 @@ Apify.main(async () => {
     Apify.events.on('migrating', data => Apify.setValue('STATE', state));
 
     // Check input
-    if(!(input.search && input.search.trim().length > 0) && !input.startUrls && !input.zpids){
-        throw new Error('Either "search", "startUrls" or "zpids" attribute has to be set!');
+    if(!(input.search && input.search.trim().length > 0) && !input.startUrls && !input.zpids && !input.zipcodes){
+        throw new Error('Either "search", "startUrls", "zpids" or "zipcodes" attribute has to be set!');
     }
     
     // Initialize minimum time
@@ -227,6 +227,11 @@ Apify.main(async () => {
     }
     if(input.zpids){
         await requestQueue.addRequest({url: 'https://www.zillow.com/homes/Los-Angeles,-CA_rb/'});
+    }
+    if(input.zipcodes){
+        for(const zipcode of input.zipcodes) {
+            await requestQueue.addRequest({url: `https://www.zillow.com/homes/${zipcode}${(input.type === 'rent' ? '/rentals' : '')}`});
+        }
     }
 
     // Create crawler
@@ -295,7 +300,7 @@ Apify.main(async () => {
                 }
                 return process.exit(0);
             }
-            
+
             // Check mapResults
             const mapResults = searchState.searchResults.mapResults;
             console.log('Searching homes at ' + JSON.stringify(qs.mapBounds));
@@ -307,7 +312,8 @@ Apify.main(async () => {
                 console.log('Found ' + mapResults.length + ' homes, extracting data...');
                 const start = request.userData.start || 0;
                 if(start){console.log('Starting at ' + start);}
-                for(let i = start; i < mapResults.length; i++){
+                const results = input.resultsPerSearch ? Math.min(mapResults.length, input.resultsPerSearch) : mapResults.length;
+                for(let i = start; i < results; i++){
                     const home = mapResults[i];
                     if(home.zpid && !state.extractedZpids[home.zpid]){
                         await processZpid(home.zpid, i);
