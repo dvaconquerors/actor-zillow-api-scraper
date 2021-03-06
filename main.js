@@ -230,7 +230,9 @@ Apify.main(async () => {
     }
     if(input.zipcodes){
         for(const zipcode of input.zipcodes) {
-            await requestQueue.addRequest({url: `https://www.zillow.com/homes/${zipcode}${(input.type === 'rent' ? '/rentals' : '')}`});
+            const url = `https://www.zillow.com/homes/${zipcode}${(input.type === 'rent' ? '/rentals' : '')}`;
+            console.log(`Adding request for ${url}`)
+            await requestQueue.addRequest({url});
         }
     }
 
@@ -273,7 +275,6 @@ Apify.main(async () => {
                         catch(e){console.log('extendOutputFunction error:'); console.log(e);}
                     }
                     await Apify.pushData(result);
-                    console.log(`Saved ${zpid}`);
                     state.extractedZpids[zpid] = true;
                     if(input.maxItems && ++state.resultCount >= input.maxItems){
                         return process.exit(0);
@@ -311,13 +312,14 @@ Apify.main(async () => {
             const thr = input.splitThreshold || 500;
             if(mapResults.length < thr || input.maxLevel === 0 || (input.maxLevel && (request.userData.splitCount || 0) >= input.maxLevel)){
                 const results = input.resultsPerSearch ? Math.min(mapResults.length, input.resultsPerSearch) : mapResults.length;
-                console.log(`Found ${mapResults.length} homes, extracting data from ${results} ...`);
+                console.log(`Found ${mapResults.length} homes for ${page.url()}, extracting data from ${results} ...`);
                 const start = request.userData.start || 0;
                 if(start){console.log('Starting at ' + start);}
                 for(let i = start; i < results; i++){
                     const home = mapResults[i];
                     if(home.zpid && !state.extractedZpids[home.zpid]){
                         await processZpid(home.zpid, i);
+                        console.log(`Saved ${i+1} records`)
                     }
                 }
             }
