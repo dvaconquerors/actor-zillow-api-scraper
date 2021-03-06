@@ -265,30 +265,18 @@ Apify.main(async () => {
             }
             
             // Extract home data by ZPID
-            const processZpid = async (zpid, index) => {
-                try{
-                    const homeData = await page.evaluate(queryZpid, zpid, queryId);
-                    if(minTime && homeData.data.property.datePosted <= minTime){return;}
-                    const result = getSimpleResult(homeData.data.property);
-                    if(extendOutputFunction){
-                        try{Object.assign(result, await extendOutputFunction(homeData.data));}
-                        catch(e){console.log('extendOutputFunction error:'); console.log(e);}
-                    }
-                    await Apify.pushData(result);
-                    state.extractedZpids[zpid] = true;
-                    if(input.maxItems && ++state.resultCount >= input.maxItems){
-                        return process.exit(0);
-                    }
+            const processZpid = async (zpid) => {
+                const homeData = await page.evaluate(queryZpid, zpid, queryId);
+                if(minTime && homeData.data.property.datePosted <= minTime){return;}
+                const result = getSimpleResult(homeData.data.property);
+                if(extendOutputFunction){
+                    try{Object.assign(result, await extendOutputFunction(homeData.data));}
+                    catch(e){console.log('extendOutputFunction error:'); console.log(e);}
                 }
-                catch(e){
-                    console.log('Data extraction failed - zpid: ' + zpid);
-                    await puppeteerPool.retire(page.browser());
-                    await requestQueue.addRequest({
-                        url: request.url,
-                        uniqueKey: Math.random() + '',
-                        userData: Object.assign(request.userData, {start: index})
-                    });
-                    return;
+                await Apify.pushData(result);
+                state.extractedZpids[zpid] = true;
+                if(input.maxItems && ++state.resultCount >= input.maxItems){
+                    return process.exit(0);
                 }
             };
             
@@ -318,8 +306,21 @@ Apify.main(async () => {
                 for(let i = start; i < results; i++){
                     const home = mapResults[i];
                     if(home.zpid && !state.extractedZpids[home.zpid]){
-                        await processZpid(home.zpid, i);
-                        console.log(`Saved ${i+1} records`)
+                        try{
+                            await processZpid(home.zpid);
+                            console.log(`Saved ${i+1} records`)
+                        }
+                        catch(e){
+                            console.log('Data extraction failed - zpid: ' + zpid);
+                            await puppeteerPool.retire(page.browser());
+
+                            console.log(`Adding request for ${request.url} starting at ${i}`)
+                            await requestQueue.addRequest({
+                                url: request.url,
+                                uniqueKey: Math.random() + '',
+                                userData: Object.assign(request.userData, {start: i})
+                            });
+                        }
                     }
                 }
             }
