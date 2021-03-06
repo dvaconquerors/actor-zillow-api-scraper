@@ -40,6 +40,12 @@
             "editor": "json",
             "description": "List of ZPIDs that will be scraped."
         },
+        "zipcodes": {
+            "title": "Zipcodes",
+            "type": "array",
+            "editor": "json",
+            "description": "List of ZIP codes that will be scraped."
+        },
         "maxLevel": {
             "title": "Max zoom level",
             "type": "integer",
@@ -51,7 +57,14 @@
             "title": "Max items",
             "type": "integer",
             "minimum": 0,
-            "prefill": 200,
+            "prefill": 2000,
+            "description": "Limit of home detail pages to be scraped"
+        },
+        "resultsPerSearch": {
+            "title": "Results per search",
+            "type": "integer",
+            "minimum": 0,
+            "prefill": 8,
             "description": "Limit of home detail pages to be scraped"
         },
         "minDate": {
