@@ -245,7 +245,7 @@ Apify.main(async () => {
 
       // Extract home data from mapResults
       const numResults = Math.min(mapResults.length, input.resultsPerSearch || 500);
-      console.log(`Found ${mapResults.length} homes for ${page.url()}, extracting data from ${numResults} ...`);
+      console.log(`Found ${mapResults.length} homes for ${request.url}, extracting data from ${numResults} ...`);
 
       const start = request.userData.start || 0;
       for (let i = start; i < numResults; i++) {
