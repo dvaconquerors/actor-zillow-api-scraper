@@ -158,13 +158,17 @@ async function getMapResults(page, qs) {
   let searchState;
   try {
     searchState = await getSearchState(page, qs);
-    console.log(`searchState = ${searchState}`);
   } catch (e) {
     console.log(e);
     throw e;
   }
 
-  if (searchState && searchState.searchResults.mapResults) {
+  if (searchState.includes('captcha')) {
+    throw 'Captcha found, retrying...';
+  }
+
+  searchState = JSON.parse(searchState);
+  if (searchState.searchResults.mapResults) {
     return searchState.searchResults.mapResults;
   } else {
     throw `No map results at ${request.url}`;
