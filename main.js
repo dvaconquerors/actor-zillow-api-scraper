@@ -137,19 +137,14 @@ async function getQueryState(page) {
   }
 }
 
-async function getSearchState(page, qs) {
+async function getSearchState(qs) {
   try {
-    console.log(`getSearchState(): page, ${JSON.stringify(qs)}`);
-
-    return await page.evaluate(async (queryState) => {
-      console.log(`page.evaluate(): ${JSON.stringify(queryState)}`);
-      const qsParam = encodeURIComponent(JSON.stringify(queryState));
-      console.log(`qsParam = ${qsParam}`);
-      const url = `https://www.zillow.com/search/GetSearchPageState.htm?searchQueryState=${qsParam}`;
-      console.log(`Getting Search State: ${url}`);
-      const resp = await fetch(url);
-      return await resp.json();
-    }, qs);
+    const qsParam = encodeURIComponent(JSON.stringify(qs));
+    console.log(`qsParam = ${qsParam}`);
+    const url = `https://www.zillow.com/search/GetSearchPageState.htm?searchQueryState=${qsParam}`;
+    console.log(`Getting Search State: ${url}`);
+    const resp = await fetch(url);
+    return await resp.json();
   } catch (e) {
     throw 'Unable to get searchState, retrying...';
   }
@@ -159,8 +154,7 @@ async function getMapResults(page, request) {
   let searchState;
   try {
     const qs = request.userData.queryState || await getQueryState(page);
-    console.log(`qs = ${JSON.stringify(qs)}`);
-    searchState = await getSearchState(page, qs);
+    searchState = await getSearchState(qs);
     console.log(`searchState = ${JSON.stringify(searchState)}`);
   } catch (e) {
     console.log(e);
@@ -200,7 +194,6 @@ Apify.main(async () => {
   // Intercept sample QueryID
   console.log('Extracting initial settings...');
   const queryId = await getSampleQueryId();
-  console.log(`Query ID = ${queryId}`);
   console.log('Initial settings extracted.');
 
   // Proxy connection is automatically established in the Crawler
