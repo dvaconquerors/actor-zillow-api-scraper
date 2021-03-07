@@ -2,7 +2,8 @@
     "name": "dva-actor-zillow-api",
     "version": "0.0.1",
     "dependencies": {
-        "apify": "0.22.4"
+        "apify": "^1.0.2",
+        "puppeteer": "6.0.0"
     },
     "scripts": {
         "start": "node main.js"
