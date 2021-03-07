@@ -28,30 +28,11 @@
                 "For rent"
             ]
         },
-        "startUrls": {
-            "title": "Start URLs",
-            "type": "array",
-            "editor": "requestListSources",
-            "description": "List of URLs that will be crawled."
-        },
-        "zpids": {
-            "title": "Zillow home IDs",
-            "type": "array",
-            "editor": "json",
-            "description": "List of ZPIDs that will be scraped."
-        },
         "zipcodes": {
             "title": "Zipcodes",
             "type": "array",
             "editor": "json",
             "description": "List of ZIP codes that will be scraped."
-        },
-        "maxLevel": {
-            "title": "Max zoom level",
-            "type": "integer",
-            "minimum": 0,
-            "prefill": 20,
-            "description": "Maximum map splitting level"
         },
         "maxItems": {
             "title": "Max items",
@@ -72,20 +53,6 @@
             "type": "string",
             "editor": "textfield",
             "description": "Oldest date allowed in results"
-        },
-        "simple": {
-            "title": "Simple results",
-            "type": "boolean",
-            "description": "Return only a subset of possible result attributes.",
-            "default": true
-        },
-        "extendOutputFunction": {
-            "title": "Extend output function",
-            "type": "string",
-            "editor": "javascript",
-            "description": "A function which result will get merged with the default result",
-            "prefill": "(data) => {\n    return {};\n}",
-            "sectionCaption": "Advanced options"
         },
         "proxyConfiguration": {
             "title": "Proxy configuration",

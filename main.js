@@ -1,24 +1,40 @@
 const Apify = require('apify');
 
-// Create browser with unblocked proxy configuration
-const getWorkingBrowser = async (url, lpOptions) => {
-  for (let i = 0; i < 100; i++) {
-    const browser = await Apify.launchPuppeteer(Object.assign({
-      apifyProxySession: 'ZILLOW_' + Math.random(),
-    }, lpOptions));
-    const page = await browser.newPage();
-    try {
-      await page.goto('https://www.zillow.com/homedetails/810-Gramercy-Dr-Los-Angeles-CA-90005/20612043_zpid/');
-      await page.close();
-      return browser;
-    } catch (e) {
-      console.log('Page load failed, creating new browser...');
-      await page.close();
-      await browser.close();
-    }
-  }
-  return null;
+const ATTRIBUTES = [
+  'zpid',
+  'address',
+  'bedrooms',
+  'bathrooms',
+  'price',
+  'yearBuilt',
+  'longitude',
+  'latitude',
+  'description',
+  'livingArea',
+  'currency',
+  'homeType',
+  'timeZone',
+  'zestimate',
+  'homeFacts',
+  'taxAssessedValue',
+  'taxAssessedYear',
+  'lotSize',
+  'datePosted',
+];
+
+const GRAPHQL_HEADERS = {
+  'accept': '*/*',
+  'accept-encoding': 'gzip, deflate, br',
+  'accept-language': 'cs,en-US;q=0.9,en;q=0.8,de;q=0.7,es;q=0.6',
+  'content-length': 276,
+  'content-type': 'text/plain',
+  'origin': 'https://www.zillow.com',
+  'user-agent': 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Ubuntu Chromium/74.0.3729.169 Chrome/74.0.3729.169 Safari/537.36',
 };
+
+function pick(o, ...props) {
+  return Object.assign({}, ...props.map(prop => ({[prop]: o[prop]})));
+}
 
 // Intercept home data API request and extract it's QueryID
 const interceptQueryId = page => new Promise(async (resolve, reject) => {
@@ -31,10 +47,8 @@ const interceptQueryId = page => new Promise(async (resolve, reject) => {
       if (payload) {
         const data = JSON.parse(payload);
         if (data.operationName === 'ForSaleDoubleScrollFullRenderQuery') {
-          //page.setRequestInterception(false);
           resolved = true;
           resolve(data.queryId);
-          //return;
         } else {
           console.log(data.operationName);
         }
@@ -42,6 +56,7 @@ const interceptQueryId = page => new Promise(async (resolve, reject) => {
     }
     r.continue();
   });
+
   const url = 'https://www.zillow.com/los-angeles-ca/';
   try {
     await page.goto(url);
@@ -82,216 +97,104 @@ const getInitialQueryState = () => {
   return JSON.parse(jsonText).queryState;
 };
 
-// Split map into 4 sub-rectangles
-const splitQueryState = queryState => {
-  const qs = queryState;
-  const mb = qs.mapBounds;
-  const states = [{...qs}, {...qs}, {...qs}, {...qs}];
-  states.forEach(state => {
-    state.mapBounds = {...mb};
-  });
-  states[0].mapBounds.south = (mb.south + mb.north) / 2;
-  states[0].mapBounds.east = (mb.east + mb.west) / 2;
-  states[1].mapBounds.south = (mb.south + mb.north) / 2;
-  states[1].mapBounds.west = (mb.east + mb.west) / 2;
-  states[2].mapBounds.north = (mb.south + mb.north) / 2;
-  states[2].mapBounds.east = (mb.east + mb.west) / 2;
-  states[3].mapBounds.north = (mb.south + mb.north) / 2;
-  states[3].mapBounds.west = (mb.east + mb.west) / 2;
-  states.forEach(state => {
-    if (mb.mapZoom) {
-      state.mapZoom = mb.mapZoom + 1;
-    }
-  });
-  return states;
-};
-
-// Make API query for all ZPIDs in map reqion
-const queryRegionHomes = async (queryState, type) => {
-  if (type === 'rent') {
-    queryState.filterState = {
-      'isForSaleByAgent': {'value': false},
-      'isForSaleByOwner': {'value': false},
-      'isNewConstruction': {'value': false},
-      'isForSaleForeclosure': {'value': false},
-      'isComingSoon': {'value': false},
-      'isAuction': {'value': false},
-      'isPreMarketForeclosure': {'value': false},
-      'isPreMarketPreForeclosure': {'value': false},
-      'isForRent': {'value': true},
-    };
-  } else if (type === 'fsbo') {
-    queryState.filterState = {
-      'isForSaleByAgent': {'value': false},
-      'isForSaleByOwner': {'value': true},
-      'isNewConstruction': {'value': false},
-      'isForSaleForeclosure': {'value': false},
-      'isComingSoon': {'value': false},
-      'isAuction': {'value': false},
-      'isPreMarketForeclosure': {'value': false},
-      'isPreMarketPreForeclosure': {'value': false},
-      'isForRent': {'value': false},
-    };
-  } else if (type === 'all') {
-    queryState.filterState = {
-      'isPreMarketForeclosure': {'value': true},
-      'isForSaleForeclosure': {'value': true},
-      'sortSelection': {'value': 'globalrelevanceex'},
-      'isAuction': {'value': true},
-      'isNewConstruction': {'value': true},
-      'isRecentlySold': {'value': true},
-      'isForSaleByOwner': {'value': true},
-      'isComingSoon': {'value': true},
-      'isPreMarketPreForeclosure': {'value': true},
-      'isForSaleByAgent': {'value': true},
-    };
-  }
+// Make API query for all ZPIDs in map region
+const queryRegionHomes = async (queryState) => {
+  queryState.filterState = {
+    isPreMarketForeclosure: {value: true},
+    isForSaleForeclosure: {value: true},
+    sortSelection: {value: 'globalrelevanceex'},
+    isAuction: {value: true},
+    isNewConstruction: {value: true},
+    isRecentlySold: {value: true},
+    isForSaleByOwner: {value: true},
+    isComingSoon: {value: true},
+    isPreMarketPreForeclosure: {value: true},
+    isForSaleByAgent: {value: true},
+  };
   const qsParam = encodeURIComponent(JSON.stringify(queryState));
-  const resp = await fetch('https://www.zillow.com/search/GetSearchPageState.htm?searchQueryState=' + qsParam);
-  return await resp.json();
+  const resp = await fetch(`https://www.zillow.com/search/GetSearchPageState.htm?searchQueryState=${qsParam}`);
+  return resp.json();
 };
 
 // Make API query for home data by ZPID
 const queryZpid = async (zpid, queryId) => {
-  const resp = await fetch(`https://www.zillow.com/graphql/?zpid=${zpid}&contactFormRenderParameter=&queryId=${queryId}&operationName=ForSaleDoubleScrollFullRenderQuery`, {
+  const query = {
+    operationName: 'ForSaleDoubleScrollFullRenderQuery',
+    variables: {zpid, contactFormRenderParameter: {zpid, platform: 'desktop', isDoubleScroll: true}},
+    queryId,
+  };
+  const searchParams = new URLSearchParams({zpid, queryId, operationName: 'ForSaleDoubleScrollFullRenderQuery'});
+  const resp = await fetch(`https://www.zillow.com/graphql/?${searchParams.toString()}`, {
     method: 'POST',
-    body: JSON.stringify({
-      'operationName': 'ForSaleDoubleScrollFullRenderQuery',
-      'variables': {
-        'zpid': zpid,
-        'contactFormRenderParameter': {
-          'zpid': zpid,
-          'platform': 'desktop',
-          'isDoubleScroll': true,
-        },
-      },
-      //"clientVersion": "home-details/6.0.11.139.master.dbc9d82",
-      'queryId': queryId,
-    }),
-    headers: {
-      'accept': '*/*',
-      'accept-encoding': 'gzip, deflate, br',
-      'accept-language': 'cs,en-US;q=0.9,en;q=0.8,de;q=0.7,es;q=0.6',
-      'content-length': 276,
-      'content-type': 'text/plain',
-      'origin': 'https://www.zillow.com',
-      'user-agent': 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Ubuntu Chromium/74.0.3729.169 Chrome/74.0.3729.169 Safari/537.36',
-    },
+    body: JSON.stringify(query),
+    headers: GRAPHQL_HEADERS,
   });
   return resp.json();
 };
 
-// Allowed home data attributes
-let attributes = {
-  'datePosted': true,
-  'isZillowOwned': true,
-  'priceHistory': true,
-  'zpid': true,
-  'homeStatus': true,
-  'address': true,
-  'bedrooms': true,
-  'bathrooms': true,
-  'price': true,
-  'yearBuilt': true,
-  'isPremierBuilder': true,
-  'longitude': true,
-  'latitude': true,
-  'description': true,
-  'primaryPublicVideo': true,
-  'tourViewCount': true,
-  'postingContact': true,
-  'unassistedShowing': true,
-  'livingArea': true,
-  'currency': true,
-  'homeType': true,
-  'comingSoonOnMarketDate': true,
-  'timeZone': true,
-  'hdpUrl': true,
-  'newConstructionType': true,
-  'moveInReady': true,
-  'moveInCompletionDate': true,
-  'hugePhotos': true,
-  'lastSoldPrice': true,
-  'contingentListingType': true,
-  'zestimate': true,
-  'zestimateLowPercent': true,
-  'zestimateHighPercent': true,
-  'rentZestimate': true,
-  'restimateLowPercent': true,
-  'restimateHighPercent': true,
-  'solarPotential': true,
-  'brokerId': true,
-  'parcelId': true,
-  'homeFacts': true,
-  'taxAssessedValue': true,
-  'taxAssessedYear': true,
-  'isPreforeclosureAuction': true,
-  'listingProvider': true,
-  'marketingName': true,
-  'building': true,
-  'priceChange': true,
-  'datePriceChanged': true,
-  'dateSold': true,
-  'lotSize': true,
-  'hoaFee': true,
-  'mortgageRates': true,
-  'propertyTaxRate': true,
-  'whatILove': true,
-  'isFeatured': true,
-  'isListedByOwner': true,
-  'isCommunityPillar': true,
-  'pageViewCount': true,
-  'favoriteCount': true,
-  'openHouseSchedule': true,
-  'brokerageName': true,
-  'taxHistory': true,
-  'abbreviatedAddress': true,
-  'ownerAccount': true,
-  'isRecentStatusChange': true,
-  'isNonOwnerOccupied': true,
-  'buildingId': true,
-  'daysOnZillow': true,
-  'rentalApplicationsAcceptedType': true,
-  'buildingPermits': true,
-  'highlights': true,
-  'tourEligibility': true,
-};
+async function extractHomeData(page, home, queryId) {
+  try {
+    const homeData = await page.evaluate(queryZpid, home.zpid, queryId);
+    return pick(homeData, ATTRIBUTES);
+  } catch {
+    throw `Data extraction failed - zpid: ${zpid}`;
+  }
+}
 
-// Simplify received home data
-const getSimpleResult = (data) => {
-  const result = {};
-  for (const key in attributes) {
-    if (data[key]) {
-      result[key] = data[key];
-    }
+async function checkForCaptcha(page) {
+  if (await page.$('.captcha-container')) {
+    throw 'Captcha found, retrying...';
   }
-  if (result.hdpUrl) {
-    result.url = 'https://www.zillow.com' + result.hdpUrl;
-    delete result.hdpUrl;
+}
+
+async function getQueryState(page) {
+  try {
+    return await page.evaluate(getInitialQueryState);
+  } catch (e) {
+    throw 'Unable to get queryStat, retrying...';
   }
-  if (result.hugePhotos) {
-    result.photos = result.hugePhotos.map(hp => hp.url);
-    delete result.hugePhotos;
+}
+
+async function getSearchState(page, qs) {
+  try {
+    return await page.evaluate(queryRegionHomes, qs);
+  } catch (e) {
+    throw 'Unable to get searchState, retrying...';
   }
-  return result;
-};
+}
+
+async function getMapResults(page, request) {
+  const qs = request.userData.queryState || await getQueryState(page);
+  const searchState = getSearchState(page, qs);
+  if (searchState.searchResults.mapResults) {
+    return searchState.searchResults.mapResults;
+  } else {
+    throw `No map results at ${request.url}`;
+  }
+}
 
 Apify.main(async () => {
   // Initialize input and state of the actor
   const input = await Apify.getInput();
   const state = await Apify.getValue('STATE') || {
-    extractedZpids: {},
-    resultCount: 0,
+    extractedZpids: [],
   };
   Apify.events.on('migrating', data => Apify.setValue('STATE', state));
 
   // Check input
-  if (!(input.search && input.search.trim().length > 0) && !input.startUrls && !input.zpids && !input.zipcodes) {
-    throw new Error('Either "search", "startUrls", "zpids" or "zipcodes" attribute has to be set!');
+  if (!(input.search && input.search.trim().length > 0) && !input.zipcodes) {
+    throw new Error('Either "search" or "zipcodes" attribute has to be set!');
   }
 
   // Initialize minimum time
   const minTime = input.minDate ? (parseInt(input.minDate) || new Date(input.minDate).getTime()) : null;
+
+  const saveResult = async (result) => {
+    if (!minTime || result.datePosted > minTime) {
+      await Apify.pushData(result);
+      state.extractedZpids.append(result.zpid);
+    }
+  };
 
   // Create launchPuppeteerOptions
   const lpOptions = input.proxyConfiguration || {useApifyProxy: true};
@@ -300,185 +203,67 @@ Apify.main(async () => {
     stealth: true,
   });
 
-  // Parse extendOutpudFunction
-  let extendOutputFunction = null;
-  if (input.extendOutputFunction) {
-    try {
-      extendOutputFunction = eval(input.extendOutputFunction);
-    } catch (e) {
-      throw new Error(`extendOutputFunction is not a valid JavaScript! Error: ${e}`);
-    }
-    if (typeof extendOutputFunction !== 'function') {
-      throw new Error(`extendOutputFunction is not a function! Please fix it or use just default output!`);
-    }
-  }
-
-  // Toggle showing only a subset of result attriutes
-  if (input.simple) {
-    attributes = {
-      'address': true,
-      'bedrooms': true,
-      'bathrooms': true,
-      'price': true,
-      'yearBuilt': true,
-      'longitude': true,
-      'latitude': true,
-      'description': true,
-      'livingArea': true,
-      'currency': true,
-      'hdpUrl': true,
-      'hugePhotos': true,
-    };
-  }
-
   // Intercept sample QueryID
   console.log('Extracting initial settings...');
   const queryId = await getSampleQueryId(lpOptions);
   console.log('Initial settings extracted.');
 
   // Create RequestQueue
-  let startUrl = null;
   const requestQueue = await Apify.openRequestQueue();
+
+  const addRequest = async (url, userData) => {
+    console.log(`Adding request for ${url}`);
+    const uniqueKey = Math.random().toString();
+    await requestQueue.addRequest({url, uniqueKey, ...(userData ? {userData} : {})});
+  };
+
   if (input.search) {
     const term = input.search.trim().replace(/,(\s*)/g, '-').replace(/\s+/, '+').toLowerCase();
-    //const term = encodeURIComponent(input.search.trim());
-    const baseUrl = 'https://www.zillow.com/homes/';
-    startUrl = baseUrl + term + (input.type === 'rent' ? '/rentals' : '');
-    await requestQueue.addRequest({url: startUrl});
-  }
-  if (input.startUrls) {
-    for (const sUrl of input.startUrls) {
-      const request = (typeof sUrl === 'string') ? {url: sUrl} : sUrl;
-      if (!request.url || (typeof request.url !== 'string')) {
-        throw new Error('Invalid startUrl: ' + JSON.stringify(sUrl));
-      }
-      await requestQueue.addRequest(request);
-    }
-  }
-  if (input.zpids) {
-    await requestQueue.addRequest({url: 'https://www.zillow.com/homes/Los-Angeles,-CA_rb/'});
+    const url = `https://www.zillow.com/homes/${term}`;
+    await addRequest(url);
   }
   if (input.zipcodes) {
-    for (const zipcode of input.zipcodes) {
-      const url = `https://www.zillow.com/homes/${zipcode}${(input.type === 'rent' ? '/rentals' : '')}`;
-      console.log(`Adding request for ${url}`);
-      await requestQueue.addRequest({url});
-    }
+    const urls = input.zipcodes.map(zipcode => `https://www.zillow.com/homes/${zipcode}`);
+    await Promise.all(urls.map(url => addRequest(url)));
   }
 
-  // Create crawler
+// Create crawler
   const crawler = new Apify.PuppeteerCrawler({
     requestQueue,
-
     maxRequestRetries: 10,
-
     handlePageTimeoutSecs: 600,
-
     launchPuppeteerOptions: lpOptions,
 
     handlePageFunction: async ({page, request, puppeteerPool}) => {
-      // Retire browser if captcha is found
-      if (await page.$('.captcha-container')) {
-        await puppeteerPool.retire(page.browser());
-        throw 'Captcha found, retrying...';
-      }
-
-      // Get initial searchState
-      let qs = request.userData.queryState, searchState;
+      let mapResults;
       try {
-        if (!qs) {
-          qs = await page.evaluate(getInitialQueryState);
-        }
-        searchState = await page.evaluate(queryRegionHomes, qs, input.type);
+        await checkForCaptcha(page);
+        mapResults = await getMapResults(page, request);
       } catch (e) {
         await puppeteerPool.retire(page.browser());
-        throw 'Unable to get searchState, retrying...';
-      }
-
-      // Extract home data by ZPID
-      const processZpid = async (zpid) => {
-        const homeData = await page.evaluate(queryZpid, zpid, queryId);
-        if (minTime && homeData.data.property.datePosted <= minTime) {
-          return;
-        }
-        const result = getSimpleResult(homeData.data.property);
-        if (extendOutputFunction) {
-          try {
-            Object.assign(result, await extendOutputFunction(homeData.data));
-          } catch (e) {
-            console.log('extendOutputFunction error:');
-            console.log(e);
-          }
-        }
-        await Apify.pushData(result);
-        state.extractedZpids[zpid] = true;
-        if (input.maxItems && ++state.resultCount >= input.maxItems) {
-          return process.exit(0);
-        }
-      };
-
-      // Extract all homes by input ZPIDs
-      if (input.zpids && input.zpids.length > 0) {
-        const start = request.userData.start || 0;
-        if (start) {
-          console.log('Starting at ' + start);
-        }
-        for (let i = start; i < input.zpids.length; i++) {
-          const zpid = input.zpids[i];
-          await processZpid(zpid, i);
-        }
-        return process.exit(0);
-      }
-
-      // Check mapResults
-      const mapResults = searchState.searchResults.mapResults;
-      console.log('Searching homes at ' + JSON.stringify(qs.mapBounds));
-      if (!mapResults) {
-        throw 'No map results at ' + JSON.stringify(qs.mapBounds);
       }
 
       // Extract home data from mapResults
-      const thr = input.splitThreshold || 500;
-      if (mapResults.length < thr || input.maxLevel === 0 || (input.maxLevel && (request.userData.splitCount || 0) >= input.maxLevel)) {
-        const results = input.resultsPerSearch ? Math.min(mapResults.length, input.resultsPerSearch) : mapResults.length;
-        console.log(`Found ${mapResults.length} homes for ${page.url()}, extracting data from ${results} ...`);
-        const start = request.userData.start || 0;
-        if (start) {
-          console.log('Starting at ' + start);
-        }
-        for (let i = start; i < results; i++) {
-          const home = mapResults[i];
-          if (home.zpid && !state.extractedZpids[home.zpid]) {
-            try {
-              await processZpid(home.zpid);
-              console.log(`Saved ${i + 1} records`);
-            } catch (e) {
-              console.log('Data extraction failed - zpid: ' + zpid);
-              await puppeteerPool.retire(page.browser());
+      const numResults = Math.min(mapResults.length, input.resultsPerSearch || 500);
+      console.log(`Found ${mapResults.length} homes for ${page.url()}, extracting data from ${numResults} ...`);
 
-              console.log(`Adding request for ${request.url} starting at ${i}`);
-              await requestQueue.addRequest({
-                url: request.url,
-                uniqueKey: Math.random() + '',
-                userData: Object.assign(request.userData, {start: i}),
-              });
-            }
-          }
+      const start = request.userData.start || 0;
+      for (let i = start; i < numResults; i++) {
+        const home = mapResults[i];
+        if (!home.zpid || state.extractedZpids.includes(home.zpid)) continue;
+
+        try {
+          const result = await extractHomeData(page, home, queryId);
+          await saveResult(result);
+        } catch (e) {
+          await puppeteerPool.retire(page.browser());
+          await addRequest(request.url, Object.assign(request.userData, {start: i}));
         }
-      }
-      // Split map and enqueue sub-rectangles
-      else {
-        console.log('Found more than ' + thr + ' homes, splitting map...');
-        const states = splitQueryState(qs);
-        for (const state of states) {
-          await requestQueue.addRequest({
-            url: startUrl || 'https://www.zillow.com/homes/Los-Angeles,-CA_rb/',
-            userData: {
-              queryState: state,
-              splitCount: (request.userData.splitCount || 0) + 1,
-            },
-            uniqueKey: Math.random() + '',
-          });
+
+        console.log(`Saved record for ${request.url}`);
+
+        if (input.maxItems && state.extractedZpids.length >= input.maxItems) {
+          return process.exit(0);
         }
       }
     },
@@ -490,5 +275,4 @@ Apify.main(async () => {
 
   // Start crawling
   await crawler.run();
-
 });
