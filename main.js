@@ -216,8 +216,7 @@ Apify.main(async () => {
 
   const addRequest = async (url, userData) => {
     console.log(`Adding request for ${url}`);
-    const uniqueKey = Math.random().toString();
-    await requestQueue.addRequest({url, uniqueKey, ...(userData ? {userData} : {})});
+    await requestQueue.addRequest({url, ...(userData ? {userData} : {})});
   };
 
   if (input.search) {
