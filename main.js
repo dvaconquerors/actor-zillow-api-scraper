@@ -100,7 +100,9 @@ const getInitialQueryState = () => {
 // Make API query for all ZPIDs in map region
 const queryRegionHomes = async (queryState) => {
   const qsParam = encodeURIComponent(JSON.stringify(queryState));
-  const resp = await fetch(`https://www.zillow.com/search/GetSearchPageState.htm?searchQueryState=${qsParam}`);
+  const url = `https://www.zillow.com/search/GetSearchPageState.htm?searchQueryState=${qsParam}`;
+  console.log(`Getting Search State: ${url}`);
+  const resp = await fetch(url);
   return await resp.json();
 };
 
