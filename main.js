@@ -139,8 +139,12 @@ async function getQueryState(page) {
 
 async function getSearchState(page, qs) {
   try {
+    console.log(`getSearchState(): page, ${JSON.stringify(qs)}`);
+
     return await page.evaluate(async (queryState) => {
+      console.log(`page.evaluate(): ${JSON.stringify(queryState)}`);
       const qsParam = encodeURIComponent(JSON.stringify(queryState));
+      console.log(`qsParam = ${qsParam}`);
       const url = `https://www.zillow.com/search/GetSearchPageState.htm?searchQueryState=${qsParam}`;
       console.log(`Getting Search State: ${url}`);
       const resp = await fetch(url);
