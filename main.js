@@ -148,11 +148,18 @@ async function getSearchState(page, qs) {
 }
 
 async function getMapResults(page, request) {
-  const qs = request.userData.queryState || await getQueryState(page);
-  console.log(`qs = ${JSON.stringify(qs)}`);
-  const searchState = getSearchState(page, qs);
-  console.log(`searchState = ${JSON.stringify(searchState)}`);
-  if (searchState.searchResults.mapResults) {
+  let searchState;
+  try {
+    const qs = request.userData.queryState || await getQueryState(page);
+    console.log(`qs = ${JSON.stringify(qs)}`);
+    searchState = getSearchState(page, qs);
+    console.log(`searchState = ${JSON.stringify(searchState)}`);
+  } catch (e) {
+    console.log(e);
+    throw e;
+  }
+
+  if (searchState && searchState.searchResults.mapResults) {
     return searchState.searchResults.mapResults;
   } else {
     throw `No map results at ${request.url}`;
