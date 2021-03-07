@@ -94,23 +94,21 @@ const getSampleQueryId = async () => {
   }
 };
 
-async function extractHomeData(page, zid, qid) {
+async function extractHomeData(zpid, queryId) {
   try {
-    const homeData = await page.evaluate(async (zpid, queryId) => {
-      const operationName = 'ForSaleDoubleScrollFullRenderQuery';
-      const query = {
-        operationName,
-        variables: {zpid, contactFormRenderParameter: {zpid, platform: 'desktop', isDoubleScroll: true}},
-        queryId,
-      };
-      const searchParams = new URLSearchParams({zpid, queryId, operationName});
-      const resp = await fetch(`https://www.zillow.com/graphql/?${searchParams.toString()}`, {
-        method: 'POST',
-        body: JSON.stringify(query),
-        headers: GRAPHQL_HEADERS,
-      });
-      return await resp.json();
-    }, zid, qid);
+    const operationName = 'ForSaleDoubleScrollFullRenderQuery';
+    const query = {
+      operationName,
+      variables: {zpid, contactFormRenderParameter: {zpid, platform: 'desktop', isDoubleScroll: true}},
+      queryId,
+    };
+    const searchParams = new URLSearchParams({zpid, queryId, operationName});
+    const resp = await fetch(`https://www.zillow.com/graphql/?${searchParams.toString()}`, {
+      method: 'POST',
+      body: JSON.stringify(query),
+      headers: GRAPHQL_HEADERS,
+    });
+    const homeData = await resp.json();
 
     return pick(homeData, ATTRIBUTES);
   } catch {
@@ -150,10 +148,9 @@ async function getSearchState(qs) {
   }
 }
 
-async function getMapResults(page, request) {
+async function getMapResults(qs) {
   let searchState;
   try {
-    const qs = request.userData.queryState || await getQueryState(page);
     searchState = await getSearchState(qs);
     console.log(`searchState = ${JSON.stringify(searchState)}`);
   } catch (e) {
@@ -238,7 +235,8 @@ Apify.main(async () => {
       let mapResults;
       try {
         await checkForCaptcha(page);
-        mapResults = await getMapResults(page, request);
+        const qs = request.userData.queryState || await getQueryState(page);
+        mapResults = await getMapResults(qs);
       } catch (e) {
         await crawler.browserPool.retireBrowserByPage(page);
         throw e;
@@ -254,7 +252,7 @@ Apify.main(async () => {
         if (!home.zpid || state.extractedZpids.includes(home.zpid)) continue;
 
         try {
-          const result = await extractHomeData(page, home.zpid, queryId);
+          const result = await extractHomeData(home.zpid, queryId);
           await saveResult(result);
         } catch (e) {
           await crawler.browserPool.retireBrowserByPage(page);
