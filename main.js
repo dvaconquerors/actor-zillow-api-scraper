@@ -129,14 +129,14 @@ async function getQueryState(page) {
       return JSON.parse(jsonText).queryState;
     });
   } catch (e) {
-    throw 'Unable to get queryStat, retrying...';
+    throw 'Unable to get queryState, retrying...';
   }
 }
 
-async function getSearchState(page, queryState) {
+async function getSearchState(page, qs) {
   try {
     return await page.evaluate(async () => {
-      const qsParam = encodeURIComponent(JSON.stringify(queryState));
+      const qsParam = encodeURIComponent(JSON.stringify(qs));
       const url = `https://www.zillow.com/search/GetSearchPageState.htm?searchQueryState=${qsParam}`;
       console.log(`Getting Search State: ${url}`);
       const resp = await fetch(url);
@@ -152,7 +152,7 @@ async function getMapResults(page, request) {
   try {
     const qs = request.userData.queryState || await getQueryState(page);
     console.log(`qs = ${JSON.stringify(qs)}`);
-    searchState = getSearchState(page, qs);
+    searchState = await getSearchState(page, qs);
     console.log(`searchState = ${JSON.stringify(searchState)}`);
   } catch (e) {
     console.log(e);
