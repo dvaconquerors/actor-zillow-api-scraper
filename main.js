@@ -199,11 +199,10 @@ Apify.main(async () => {
   };
 
   // Create launchPuppeteerOptions
-  const lpOptions = input.proxyConfiguration || {useApifyProxy: true};
-  Object.assign(lpOptions, {
+  const lpOptions = {
     useChrome: true,
     stealth: true,
-  });
+  };
 
   // Intercept sample QueryID
   console.log('Extracting initial settings...');
