@@ -1,5 +1,5 @@
 const Apify = require('apify');
-const fetch = require("node-fetch");
+const nodeFetch = require("node-fetch");
 
 const ATTRIBUTES = [
   'zpid',
@@ -104,7 +104,7 @@ async function extractHomeData(zpid, queryId) {
       queryId,
     };
     const searchParams = new URLSearchParams({zpid, queryId, operationName});
-    const resp = await fetch(`https://www.zillow.com/graphql/?${searchParams.toString()}`, {
+    const resp = await nodeFetch(`https://www.zillow.com/graphql/?${searchParams.toString()}`, {
       method: 'POST',
       body: JSON.stringify(query),
       headers: GRAPHQL_HEADERS,
@@ -142,7 +142,7 @@ async function getSearchState(qs) {
     const qsParam = encodeURIComponent(JSON.stringify(qs));
     const url = `https://www.zillow.com/search/GetSearchPageState.htm?searchQueryState=${qsParam}`;
     console.log(`Getting Search State: ${url}`);
-    const resp = await fetch(url);
+    const resp = await nodeFetch(url);
     console.log(JSON.stringify(resp));
     return await resp.json();
   } catch (e) {
