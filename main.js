@@ -90,41 +90,24 @@ const getSampleQueryId = async (launchContext) => {
   }
 };
 
-// Extract inital queryState from page
-const getInitialQueryState = () => {
-  const scriptText = document.querySelector('script[data-zrr-shared-data-key="mobileSearchPageStore"]').textContent;
-  const jsonText = scriptText.slice(4, scriptText.length - 3);
-  return JSON.parse(jsonText).queryState;
-};
-
-// Make API query for all ZPIDs in map region
-const queryRegionHomes = async (queryState) => {
-  const qsParam = encodeURIComponent(JSON.stringify(queryState));
-  const url = `https://www.zillow.com/search/GetSearchPageState.htm?searchQueryState=${qsParam}`;
-  console.log(`Getting Search State: ${url}`);
-  const resp = await fetch(url);
-  return await resp.json();
-};
-
-// Make API query for home data by ZPID
-const queryZpid = async (zpid, queryId) => {
-  const query = {
-    operationName: 'ForSaleDoubleScrollFullRenderQuery',
-    variables: {zpid, contactFormRenderParameter: {zpid, platform: 'desktop', isDoubleScroll: true}},
-    queryId,
-  };
-  const searchParams = new URLSearchParams({zpid, queryId, operationName: 'ForSaleDoubleScrollFullRenderQuery'});
-  const resp = await fetch(`https://www.zillow.com/graphql/?${searchParams.toString()}`, {
-    method: 'POST',
-    body: JSON.stringify(query),
-    headers: GRAPHQL_HEADERS,
-  });
-  return await resp.json();
-};
-
-async function extractHomeData(page, home, queryId) {
+async function extractHomeData(page, zpid, queryId) {
   try {
-    const homeData = await page.evaluate(queryZpid, home.zpid, queryId);
+    const homeData = await page.evaluate(async () => {
+      const operationName = 'ForSaleDoubleScrollFullRenderQuery';
+      const query = {
+        operationName,
+        variables: {zpid, contactFormRenderParameter: {zpid, platform: 'desktop', isDoubleScroll: true}},
+        queryId,
+      };
+      const searchParams = new URLSearchParams({zpid, queryId, operationName});
+      const resp = await fetch(`https://www.zillow.com/graphql/?${searchParams.toString()}`, {
+        method: 'POST',
+        body: JSON.stringify(query),
+        headers: GRAPHQL_HEADERS,
+      });
+      return await resp.json();
+    });
+
     return pick(homeData, ATTRIBUTES);
   } catch {
     throw `Data extraction failed - zpid: ${zpid}`;
@@ -137,9 +120,14 @@ async function checkForCaptcha(page) {
   }
 }
 
+// Extract initial queryState from page
 async function getQueryState(page) {
   try {
-    return await page.evaluate(getInitialQueryState);
+    return await page.evaluate(() => {
+      const scriptText = document.querySelector('script[data-zrr-shared-data-key="mobileSearchPageStore"]').textContent;
+      const jsonText = scriptText.slice(4, scriptText.length - 3);
+      return JSON.parse(jsonText).queryState;
+    });
   } catch (e) {
     throw 'Unable to get queryStat, retrying...';
   }
@@ -147,7 +135,13 @@ async function getQueryState(page) {
 
 async function getSearchState(page, qs) {
   try {
-    return await page.evaluate(queryRegionHomes, qs);
+    return await page.evaluate(async (queryState) => {
+      const qsParam = encodeURIComponent(JSON.stringify(queryState));
+      const url = `https://www.zillow.com/search/GetSearchPageState.htm?searchQueryState=${qsParam}`;
+      console.log(`Getting Search State: ${url}`);
+      const resp = await fetch(url);
+      return await resp.json();
+    }, qs);
   } catch (e) {
     throw 'Unable to get searchState, retrying...';
   }
@@ -254,7 +248,7 @@ Apify.main(async () => {
         if (!home.zpid || state.extractedZpids.includes(home.zpid)) continue;
 
         try {
-          const result = await extractHomeData(page, home, queryId);
+          const result = await extractHomeData(page, home.zpid, queryId);
           await saveResult(result);
         } catch (e) {
           await crawler.browserPool.retireBrowserByPage(page);
