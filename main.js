@@ -73,8 +73,8 @@ const interceptQueryId = page => new Promise(async (resolve, reject) => {
 });
 
 // Try intercepting QueryID until it's received
-const getSampleQueryId = async (lpOptions) => {
-  const browser = await Apify.launchPuppeteer(lpOptions);
+const getSampleQueryId = async (launchContext) => {
+  const browser = await Apify.launchPuppeteer(launchContext);
   for (let i = 0; i < 100; i++) {
     const page = await browser.newPage();
     try {
@@ -198,15 +198,14 @@ Apify.main(async () => {
     }
   };
 
-  // Create launchPuppeteerOptions
-  const lpOptions = {
+  const launchContext = {
     useChrome: true,
-    stealth: true,
+    stelth: true,
   };
 
   // Intercept sample QueryID
   console.log('Extracting initial settings...');
-  const queryId = await getSampleQueryId(lpOptions);
+  const queryId = await getSampleQueryId(launchContext);
   console.log(`Query ID = ${queryId}`);
   console.log('Initial settings extracted.');
 
@@ -233,15 +232,15 @@ Apify.main(async () => {
     requestQueue,
     maxRequestRetries: 10,
     handlePageTimeoutSecs: 600,
-    launchPuppeteerOptions: lpOptions,
+    launchContext,
 
-    handlePageFunction: async ({page, request, puppeteerPool}) => {
+    handlePageFunction: async ({page, request, crawler}) => {
       let mapResults;
       try {
         await checkForCaptcha(page);
         mapResults = await getMapResults(page, request);
       } catch (e) {
-        await puppeteerPool.retire(page.browser());
+        await crawler.browserPool.retireBrowserByPage(page);
         throw e;
       }
 
@@ -258,8 +257,9 @@ Apify.main(async () => {
           const result = await extractHomeData(page, home, queryId);
           await saveResult(result);
         } catch (e) {
-          await puppeteerPool.retire(page.browser());
+          await crawler.browserPool.retireBrowserByPage(page);
           await addRequest(request.url, Object.assign(request.userData, {start: i}));
+          throw e;
         }
 
         console.log(`Saved record for ${request.url}`);
