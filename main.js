@@ -1,4 +1,5 @@
 const Apify = require('apify');
+const fetch = require("node-fetch");
 
 const ATTRIBUTES = [
   'zpid',
@@ -131,6 +132,7 @@ async function getQueryState(page) {
       return JSON.parse(jsonText).queryState;
     });
   } catch (e) {
+    console.log(e);
     throw 'Unable to get queryState, retrying...';
   }
 }
