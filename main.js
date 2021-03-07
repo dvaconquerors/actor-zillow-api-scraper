@@ -40,6 +40,7 @@ function pick(o, ...props) {
 const interceptQueryId = page => new Promise(async (resolve, reject) => {
   let resolved = false;
   await page.setRequestInterception(true);
+
   page.on('request', r => {
     const url = r.url();
     if (url.includes('https://www.zillow.com/graphql')) {
@@ -73,8 +74,11 @@ const interceptQueryId = page => new Promise(async (resolve, reject) => {
 });
 
 // Try intercepting QueryID until it's received
-const getSampleQueryId = async (launchContext) => {
-  const browser = await Apify.launchPuppeteer(launchContext);
+const getSampleQueryId = async () => {
+  const browser = await Apify.launchPuppeteer({
+    useChrome: true,
+    stealth: true,
+  });
   for (let i = 0; i < 100; i++) {
     const page = await browser.newPage();
     try {
@@ -90,9 +94,9 @@ const getSampleQueryId = async (launchContext) => {
   }
 };
 
-async function extractHomeData(page, zpid, queryId) {
+async function extractHomeData(page, zid, qid) {
   try {
-    const homeData = await page.evaluate(async () => {
+    const homeData = await page.evaluate(async (zpid, queryId) => {
       const operationName = 'ForSaleDoubleScrollFullRenderQuery';
       const query = {
         operationName,
@@ -106,7 +110,7 @@ async function extractHomeData(page, zpid, queryId) {
         headers: GRAPHQL_HEADERS,
       });
       return await resp.json();
-    });
+    }, zid, qid);
 
     return pick(homeData, ATTRIBUTES);
   } catch {
@@ -135,13 +139,13 @@ async function getQueryState(page) {
 
 async function getSearchState(page, qs) {
   try {
-    return await page.evaluate(async () => {
-      const qsParam = encodeURIComponent(JSON.stringify(qs));
+    return await page.evaluate(async (queryState) => {
+      const qsParam = encodeURIComponent(JSON.stringify(queryState));
       const url = `https://www.zillow.com/search/GetSearchPageState.htm?searchQueryState=${qsParam}`;
       console.log(`Getting Search State: ${url}`);
       const resp = await fetch(url);
       return await resp.json();
-    });
+    }, qs);
   } catch (e) {
     throw 'Unable to get searchState, retrying...';
   }
@@ -167,14 +171,14 @@ async function getMapResults(page, request) {
 }
 
 Apify.main(async () => {
-  // Initialize input and state of the actor
-  const input = await Apify.getInput();
+  // Initialize state of the actor
   const state = await Apify.getValue('STATE') || {
     extractedZpids: [],
   };
-  Apify.events.on('migrating', data => Apify.setValue('STATE', state));
+  Apify.events.on('migrating', () => Apify.setValue('STATE', state));
 
-  // Check input
+  // Initialize and check input
+  const input = await Apify.getInput();
   if (!(input.search && input.search.trim().length > 0) && !input.zipcodes) {
     throw new Error('Either "search" or "zipcodes" attribute has to be set!');
   }
@@ -189,14 +193,9 @@ Apify.main(async () => {
     }
   };
 
-  const launchContext = {
-    useChrome: true,
-    stealth: true,
-  };
-
   // Intercept sample QueryID
   console.log('Extracting initial settings...');
-  const queryId = await getSampleQueryId(launchContext);
+  const queryId = await getSampleQueryId();
   console.log(`Query ID = ${queryId}`);
   console.log('Initial settings extracted.');
 
@@ -233,7 +232,10 @@ Apify.main(async () => {
 
     maxRequestsPerCrawl: 50,
 
-    launchContext,
+    launchContext: {
+      useChrome: true,
+      stealth: true,
+    },
 
     handlePageFunction: async ({page, request, crawler}) => {
       let mapResults;
@@ -245,10 +247,10 @@ Apify.main(async () => {
         throw e;
       }
 
-      // Extract home data from mapResults
       const numResults = Math.min(mapResults.length, input.resultsPerSearch || 500);
       console.log(`Found ${mapResults.length} homes for ${request.url}, extracting data from ${numResults} ...`);
 
+      // Extract home data from mapResults
       const start = request.userData.start || 0;
       for (let i = start; i < numResults; i++) {
         const home = mapResults[i];
