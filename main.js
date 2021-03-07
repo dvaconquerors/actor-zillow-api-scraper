@@ -145,10 +145,7 @@ async function getSearchState(page, qs) {
     return await page.evaluate(async (queryState) => {
       const qsParam = encodeURIComponent(JSON.stringify(queryState));
       const url = `https://www.zillow.com/search/GetSearchPageState.htm?searchQueryState=${qsParam}`;
-      console.log(`Getting Search State: ${url}`);
-      const resp = await fetch(url);
-      console.log(JSON.stringify(resp));
-      return await resp.json();
+      return await fetch(url);
     }, qs);
   } catch (e) {
     console.log(e);
@@ -160,6 +157,9 @@ async function getMapResults(page, qs) {
   let searchState;
   try {
     searchState = await getSearchState(page, qs);
+    console.log(searchState);
+    searchState = await searchState.json();
+
     console.log(`searchState = ${JSON.stringify(searchState)}`);
   } catch (e) {
     console.log(e);
