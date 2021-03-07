@@ -165,7 +165,9 @@ async function getSearchState(page, qs) {
 
 async function getMapResults(page, request) {
   const qs = request.userData.queryState || await getQueryState(page);
+  console.log(`qs = ${JSON.stringify(qs)}`);
   const searchState = getSearchState(page, qs);
+  console.log(`searchState = ${JSON.stringify(searchState)}`);
   if (searchState.searchResults.mapResults) {
     return searchState.searchResults.mapResults;
   } else {
@@ -241,6 +243,7 @@ Apify.main(async () => {
         mapResults = await getMapResults(page, request);
       } catch (e) {
         await puppeteerPool.retire(page.browser());
+        throw e;
       }
 
       // Extract home data from mapResults
