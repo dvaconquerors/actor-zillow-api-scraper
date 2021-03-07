@@ -200,7 +200,7 @@ Apify.main(async () => {
 
   const launchContext = {
     useChrome: true,
-    stelth: true,
+    stealth: true,
   };
 
   // Intercept sample QueryID
