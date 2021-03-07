@@ -208,6 +208,7 @@ Apify.main(async () => {
   // Intercept sample QueryID
   console.log('Extracting initial settings...');
   const queryId = await getSampleQueryId(lpOptions);
+  console.log(`Query ID = ${queryId}`);
   console.log('Initial settings extracted.');
 
   // Create RequestQueue
