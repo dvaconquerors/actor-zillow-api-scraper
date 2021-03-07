@@ -1,5 +1,4 @@
 const Apify = require('apify');
-const nodeFetch = require("node-fetch");
 
 const ATTRIBUTES = [
   'zpid',
@@ -95,8 +94,9 @@ const getSampleQueryId = async () => {
   }
 };
 
-async function extractHomeData(zpid, queryId) {
+async function extractHomeData(page, zid, qid) {
   try {
+    return await page.evaluate(async (zpid, queryId) => {
     const operationName = 'ForSaleDoubleScrollFullRenderQuery';
     const query = {
       operationName,
@@ -104,7 +104,7 @@ async function extractHomeData(zpid, queryId) {
       queryId,
     };
     const searchParams = new URLSearchParams({zpid, queryId, operationName});
-    const resp = await nodeFetch(`https://www.zillow.com/graphql/?${searchParams.toString()}`, {
+    const resp = await fetch(`https://www.zillow.com/graphql/?${searchParams.toString()}`, {
       method: 'POST',
       body: JSON.stringify(query),
       headers: GRAPHQL_HEADERS,
@@ -112,7 +112,10 @@ async function extractHomeData(zpid, queryId) {
     const homeData = await resp.json();
 
     return pick(homeData, ATTRIBUTES);
-  } catch {
+
+    }, zid, qid)
+  } catch (e) {
+    console.log(e);
     throw `Data extraction failed - zpid: ${zpid}`;
   }
 }
@@ -137,24 +140,26 @@ async function getQueryState(page) {
   }
 }
 
-async function getSearchState(qs) {
+async function getSearchState(page, qs) {
   try {
-    const qsParam = encodeURIComponent(JSON.stringify(qs));
-    const url = `https://www.zillow.com/search/GetSearchPageState.htm?searchQueryState=${qsParam}`;
-    console.log(`Getting Search State: ${url}`);
-    const resp = await nodeFetch(url);
-    console.log(JSON.stringify(resp));
-    return await resp.json();
+    return await page.evaluate(async (queryState) => {
+      const qsParam = encodeURIComponent(JSON.stringify(queryState));
+      const url = `https://www.zillow.com/search/GetSearchPageState.htm?searchQueryState=${qsParam}`;
+      console.log(`Getting Search State: ${url}`);
+      const resp = await fetch(url);
+      console.log(JSON.stringify(resp));
+      return await resp.json();
+    }, qs);
   } catch (e) {
     console.log(e);
     throw 'Unable to get searchState, retrying...';
   }
 }
 
-async function getMapResults(qs) {
+async function getMapResults(page, qs) {
   let searchState;
   try {
-    searchState = await getSearchState(qs);
+    searchState = await getSearchState(page, qs);
     console.log(`searchState = ${JSON.stringify(searchState)}`);
   } catch (e) {
     console.log(e);
@@ -239,7 +244,7 @@ Apify.main(async () => {
       try {
         await checkForCaptcha(page);
         const qs = request.userData.queryState || await getQueryState(page);
-        mapResults = await getMapResults(qs);
+        mapResults = await getMapResults(page, qs);
       } catch (e) {
         await crawler.browserPool.retireBrowserByPage(page);
         throw e;
@@ -255,7 +260,7 @@ Apify.main(async () => {
         if (!home.zpid || state.extractedZpids.includes(home.zpid)) continue;
 
         try {
-          const result = await extractHomeData(home.zpid, queryId);
+          const result = await extractHomeData(page, home.zpid, queryId);
           await saveResult(result);
         } catch (e) {
           await crawler.browserPool.retireBrowserByPage(page);
