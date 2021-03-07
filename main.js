@@ -209,6 +209,9 @@ Apify.main(async () => {
   console.log(`Query ID = ${queryId}`);
   console.log('Initial settings extracted.');
 
+  // Proxy connection is automatically established in the Crawler
+  const proxyConfiguration = await Apify.createProxyConfiguration();
+
   // Create RequestQueue
   const requestQueue = await Apify.openRequestQueue();
 
@@ -230,8 +233,15 @@ Apify.main(async () => {
 // Create crawler
   const crawler = new Apify.PuppeteerCrawler({
     requestQueue,
+
+    proxyConfiguration,
+
     maxRequestRetries: 10,
+
     handlePageTimeoutSecs: 600,
+
+    maxRequestsPerCrawl: 50,
+
     launchContext,
 
     handlePageFunction: async ({page, request, crawler}) => {
