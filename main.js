@@ -99,21 +99,9 @@ const getInitialQueryState = () => {
 
 // Make API query for all ZPIDs in map region
 const queryRegionHomes = async (queryState) => {
-  queryState.filterState = {
-    isPreMarketForeclosure: {value: true},
-    isForSaleForeclosure: {value: true},
-    sortSelection: {value: 'globalrelevanceex'},
-    isAuction: {value: true},
-    isNewConstruction: {value: true},
-    isRecentlySold: {value: true},
-    isForSaleByOwner: {value: true},
-    isComingSoon: {value: true},
-    isPreMarketPreForeclosure: {value: true},
-    isForSaleByAgent: {value: true},
-  };
   const qsParam = encodeURIComponent(JSON.stringify(queryState));
   const resp = await fetch(`https://www.zillow.com/search/GetSearchPageState.htm?searchQueryState=${qsParam}`);
-  return resp.json();
+  return await resp.json();
 };
 
 // Make API query for home data by ZPID
@@ -129,7 +117,7 @@ const queryZpid = async (zpid, queryId) => {
     body: JSON.stringify(query),
     headers: GRAPHQL_HEADERS,
   });
-  return resp.json();
+  return await resp.json();
 };
 
 async function extractHomeData(page, home, queryId) {
