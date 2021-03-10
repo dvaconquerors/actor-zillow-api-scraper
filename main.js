@@ -239,6 +239,7 @@ Apify.main(async () => {
 
     launchContext: {
       useChrome: true,
+      stealth: true,
     },
 
     handlePageFunction: async ({page, request, crawler}) => {
