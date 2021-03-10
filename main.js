@@ -22,16 +22,6 @@ const ATTRIBUTES = [
   'datePosted',
 ];
 
-const GRAPHQL_HEADERS = {
-  'accept': '*/*',
-  'accept-encoding': 'gzip, deflate, br',
-  'accept-language': 'cs,en-US;q=0.9,en;q=0.8,de;q=0.7,es;q=0.6',
-  'content-length': 276,
-  'content-type': 'text/plain',
-  'origin': 'https://www.zillow.com',
-  'user-agent': 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Ubuntu Chromium/74.0.3729.169 Chrome/74.0.3729.169 Safari/537.36',
-};
-
 function pick(o, ...props) {
   return Object.assign({}, ...props.map(prop => ({[prop]: o[prop]})));
 }
@@ -97,23 +87,29 @@ const getSampleQueryId = async () => {
 async function extractHomeData(page, zid, qid) {
   try {
     return await page.evaluate(async (zpid, queryId) => {
-    const operationName = 'ForSaleDoubleScrollFullRenderQuery';
-    const query = {
-      operationName,
-      variables: {zpid, contactFormRenderParameter: {zpid, platform: 'desktop', isDoubleScroll: true}},
-      queryId,
-    };
-    const searchParams = new URLSearchParams({zpid, queryId, operationName});
-    const resp = await fetch(`https://www.zillow.com/graphql/?${searchParams.toString()}`, {
-      method: 'POST',
-      body: JSON.stringify(query),
-      headers: GRAPHQL_HEADERS,
-    });
-    const homeData = await resp.json();
-
-    return pick(homeData, ATTRIBUTES);
-
-    }, zid, qid)
+      const operationName = 'ForSaleDoubleScrollFullRenderQuery';
+      const query = {
+        operationName,
+        variables: {zpid, contactFormRenderParameter: {zpid, platform: 'desktop', isDoubleScroll: true}},
+        queryId,
+      };
+      const searchParams = new URLSearchParams({zpid, queryId, operationName});
+      const resp = await fetch(`https://www.zillow.com/graphql/?${searchParams.toString()}`, {
+        method: 'POST',
+        body: JSON.stringify(query),
+        headers: {
+          'accept': '*/*',
+          'accept-encoding': 'gzip, deflate, br',
+          'accept-language': 'cs,en-US;q=0.9,en;q=0.8,de;q=0.7,es;q=0.6',
+          'content-length': 276,
+          'content-type': 'text/plain',
+          'origin': 'https://www.zillow.com',
+          'user-agent': 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Ubuntu Chromium/74.0.3729.169 Chrome/74.0.3729.169 Safari/537.36',
+        },
+      });
+      const payload = await resp.json();
+      return payload.data.property;
+    }, zid, qid);
   } catch (e) {
     console.log(e);
     throw `Data extraction failed - zpid: ${zpid}`;
@@ -140,14 +136,24 @@ async function getQueryState(page) {
   }
 }
 
+let request = 0;
+
 async function getSearchState(page, qs) {
   try {
-    return await page.evaluate(async (queryState) => {
+    request += 1;
+    return await page.evaluate(async (queryState, requestId) => {
       const qsParam = encodeURIComponent(JSON.stringify(queryState));
-      const url = `https://www.zillow.com/search/GetSearchPageState.htm?searchQueryState=${qsParam}`;
+      const wantsParam = encodeURIComponent(JSON.stringify({cat1: ['listResults', 'mapResults']}));
+      const url = `https://www.zillow.com/search/GetSearchPageState.htm?searchQueryState=${qsParam}&wants=${wantsParam}&requestId=${requestId}`;
       const resp = await fetch(url);
-      return await resp.text();
-    }, qs);
+
+      const text = await resp.text();
+      if (text.includes('captcha')) {
+        throw 'Captcha found, retrying...';
+      }
+
+      return JSON.parse(text);
+    }, qs, request);
   } catch (e) {
     console.log(e);
     throw 'Unable to get searchState, retrying...';
@@ -163,13 +169,8 @@ async function getMapResults(page, qs) {
     throw e;
   }
 
-  if (searchState.includes('captcha')) {
-    throw 'Captcha found, retrying...';
-  }
-
-  searchState = JSON.parse(searchState);
-  if (searchState.searchResults.mapResults) {
-    return searchState.searchResults.mapResults;
+  if (searchState.cat1.searchResults.mapResults) {
+    return searchState.cat1.searchResults.mapResults;
   } else {
     throw `No map results at ${request.url}`;
   }
@@ -194,7 +195,7 @@ Apify.main(async () => {
   const saveResult = async (result) => {
     if (!minTime || result.datePosted > minTime) {
       await Apify.pushData(result);
-      state.extractedZpids.append(result.zpid);
+      state.extractedZpids.push(result.zpid);
     }
   };
 
@@ -238,7 +239,6 @@ Apify.main(async () => {
 
     launchContext: {
       useChrome: true,
-      stealth: true,
     },
 
     handlePageFunction: async ({page, request, crawler}) => {
@@ -257,13 +257,14 @@ Apify.main(async () => {
 
       // Extract home data from mapResults
       const start = request.userData.start || 0;
-      for (let i = start; i < numResults; i++) {
+      for (let i = start; i <= numResults; i++) {
         const home = mapResults[i];
         if (!home.zpid || state.extractedZpids.includes(home.zpid)) continue;
 
         try {
           const result = await extractHomeData(page, home.zpid, queryId);
-          await saveResult(result);
+          const property = pick(result, ...ATTRIBUTES);
+          await saveResult(property);
         } catch (e) {
           await crawler.browserPool.retireBrowserByPage(page);
           await addRequest(request.url, Object.assign(request.userData, {start: i}));
