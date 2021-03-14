@@ -99,6 +99,7 @@ async function extractHomeData(page, zid, qid) {
 
 async function checkForCaptcha(page) {
   if (await page.$('.captcha-container')) {
+    await new Promise(resolve => setTimeout(resolve, 120_000))
     throw 'Captcha found, retrying...';
   }
 }
@@ -123,6 +124,7 @@ async function getSearchState(page, qs) {
   try {
     request += 1;
     return await page.evaluate(async (queryState, requestId) => {
+      queryState.filterState = {'isRecentlySold': {'value': true}};
       const qsParam = encodeURIComponent(JSON.stringify(queryState));
       const wantsParam = encodeURIComponent(JSON.stringify({cat1: ['listResults', 'mapResults']}));
       const url = `https://www.zillow.com/search/GetSearchPageState.htm?searchQueryState=${qsParam}&wants=${wantsParam}&requestId=${requestId}`;
@@ -130,6 +132,7 @@ async function getSearchState(page, qs) {
 
       const text = await resp.text();
       if (text.includes('captcha')) {
+        await new Promise(resolve => setTimeout(resolve, 120_000))
         throw 'Captcha found, retrying...';
       }
 
