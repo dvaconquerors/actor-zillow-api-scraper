@@ -49,7 +49,11 @@ npm install
 - Update with your dataset:
 ```json
 { 
-  "dataset": 0
+  "dataset": 0,
+  "accessKeyId": "your-access-key-id",
+  "secretAccessKey": "your-secret-access-key",
+  "region": "us-east-1",
+  "bucket": "bucket-name"  
 }
 ```
 

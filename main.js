@@ -1,8 +1,5 @@
 const Apify = require('apify');
-
-function pick(o, ...props) {
-  return Object.assign({}, ...props.map(prop => ({[prop]: o[prop]})));
-}
+const S3 = require('aws-sdk/clients/s3');
 
 // Intercept home data API request and extract it's QueryID
 const interceptQueryId = page => new Promise(async (resolve, reject) => {
@@ -99,7 +96,7 @@ async function extractHomeData(page, zid, qid) {
 
 async function checkForCaptcha(page) {
   if (await page.$('.captcha-container')) {
-    await new Promise(resolve => setTimeout(resolve, 60_000))
+    await new Promise(resolve => setTimeout(resolve, 60_000));
     throw 'Captcha found, retrying...';
   }
 }
@@ -132,7 +129,7 @@ async function getSearchState(page, qs) {
 
       const text = await resp.text();
       if (text.includes('captcha')) {
-        await new Promise(resolve => setTimeout(resolve, 60_000))
+        await new Promise(resolve => setTimeout(resolve, 60_000));
         throw 'Captcha found, retrying...';
       }
 
@@ -168,21 +165,22 @@ Apify.main(async () => {
   Apify.events.on('migrating', () => Apify.setValue('STATE', state));
 
   // Initialize and check input
-  const default_kvs = await Apify.getInput();
-  if (typeof default_kvs.dataset !== 'number') {
+  const input = await Apify.getInput();
+  if (typeof input.dataset !== 'number') {
     throw new Error('Must provide "dataset" in INPUT.json');
   }
 
-  const input = require(`./input_files/INPUT${default_kvs.dataset}.json`);
-  if (!(input.search && input.search.trim().length > 0) && !input.zipcodes) {
+  const dataset_input = require(`./input_files/INPUT${input.dataset}.json`);
+  if (!(dataset_input.search && dataset_input.search.trim().length > 0) && !dataset_input.zipcodes) {
     throw new Error('Either "search" or "zipcodes" attribute has to be set!');
   }
 
   // Create dataset
-  const dataset = await Apify.openDataset(`dataset-${default_kvs.dataset}`);
+  const datasetName = `dataset-${input.dataset}`;
+  const dataset = await Apify.openDataset(datasetName);
 
   // Initialize minimum time
-  const minTime = input.minDate ? (parseInt(input.minDate) || new Date(input.minDate).getTime()) : null;
+  const minTime = dataset_input.minDate ? (parseInt(dataset_input.minDate) || new Date(dataset_input.minDate).getTime()) : null;
 
   const saveResults = async (results) => {
     results = results.filter(result => !minTime || result.datePosted > minTime);
@@ -206,17 +204,12 @@ Apify.main(async () => {
     await requestQueue.addRequest({url, ...(userData ? {userData} : {})});
   };
 
-  if (input.search) {
-    const term = input.search.trim().replace(/,(\s*)/g, '-').replace(/\s+/, '+').toLowerCase();
-    const url = `https://www.zillow.com/homes/${term}`;
-    await addRequest(url);
-  }
-  if (input.zipcodes) {
-    const urls = input.zipcodes.map(zipcode => `https://www.zillow.com/homes/${zipcode}`);
+  if (dataset_input.zipcodes) {
+    const urls = dataset_input.zipcodes.map(zipcode => `https://www.zillow.com/homes/${zipcode}`);
     await Promise.all(urls.map(url => addRequest(url)));
   }
 
-// Create crawler
+  // Create crawler
   const crawler = new Apify.PuppeteerCrawler({
     requestQueue,
 
@@ -244,7 +237,7 @@ Apify.main(async () => {
         throw e;
       }
 
-      const numResults = Math.min(mapResults.length, input.resultsPerSearch || 500);
+      const numResults = Math.min(mapResults.length, dataset_input.resultsPerSearch || 500);
       if (numResults) {
         console.log(`Found ${mapResults.length} homes for ${request.url}, extracting data from ${numResults} ...`);
 
@@ -264,7 +257,7 @@ Apify.main(async () => {
         console.log(`Found no homes for ${request.url}`);
       }
 
-      if (input.maxItems && state.extractedZpids.length >= input.maxItems) {
+      if (dataset_input.maxItems && state.extractedZpids.length >= dataset_input.maxItems) {
         return process.exit(0);
       }
     },
@@ -276,4 +269,37 @@ Apify.main(async () => {
 
   // Start crawling
   await crawler.run();
+
+  // Process results
+  if (input.accessKeyId && input.secretAccessKey && input.region && input.bucket) {
+    const s3 = new S3({
+      apiVersion: '2006-03-01',
+      accessKeyId: input.accessKeyId,
+      secretAccessKey: input.secretAccessKey,
+      region: input.region,
+      Bucket: input.bucket,
+    });
+
+    const uploadToS3 = async (item) => {
+      try {
+        await s3.putObject({
+          Bucket: input.bucket,
+          Key: `raw-zillow-data/${datasetName}/${item.zipcode}-${item.zpid}.json`,
+          Body: JSON.stringify(item),
+          ContentType: 'application/json',
+        }).promise();
+      } catch (e) {
+        throw new Error(`Unable to upload to S3: ${e.message}`);
+      }
+    };
+
+    const datasetInfo = await dataset.getInfo();
+    if (typeof datasetInfo.itemCount === 'number') {
+      console.log(`Uploading ${datasetInfo.itemCount} files to S3. This may take a while`);
+      await dataset.forEach(uploadToS3);
+      console.log(`Uploaded ${datasetInfo.itemCount} files to S3.`);
+    }
+  } else {
+    console.log('Must provide "accessKeyId", "secretAccessKey", "region", and "bucket" to upload to S3.');
+  }
 });
