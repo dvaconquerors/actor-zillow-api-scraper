@@ -99,7 +99,7 @@ async function extractHomeData(page, zid, qid) {
 
 async function checkForCaptcha(page) {
   if (await page.$('.captcha-container')) {
-    await new Promise(resolve => setTimeout(resolve, 120_000))
+    await new Promise(resolve => setTimeout(resolve, 60_000))
     throw 'Captcha found, retrying...';
   }
 }
@@ -132,7 +132,7 @@ async function getSearchState(page, qs) {
 
       const text = await resp.text();
       if (text.includes('captcha')) {
-        await new Promise(resolve => setTimeout(resolve, 120_000))
+        await new Promise(resolve => setTimeout(resolve, 60_000))
         throw 'Captcha found, retrying...';
       }
 
