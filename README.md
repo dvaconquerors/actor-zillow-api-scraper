@@ -42,18 +42,12 @@ apify init
 npm install
 ```
 
-8) Edit `INPUT.json`
+8) Setup `INPUT.json`
 
-- Open `apify_storage/key_value_stores/default/INPUT.json`
+- Copy one of the input files into `apify_storage/key_value_stores/default/INPUT.json`
 
-- Update with your configuration:
-```json
-{ "zipcodes": [
-    "11111",
-    "22222"
-  ],
-  "resultsPerSearch": 25
-}
+```shell
+cp input/INPUT12.json apify_storage/key_value_stores/default/INPUT.json
 ```
 
 9) Run Apify Actor
