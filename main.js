@@ -168,17 +168,25 @@ Apify.main(async () => {
   Apify.events.on('migrating', () => Apify.setValue('STATE', state));
 
   // Initialize and check input
-  const input = await Apify.getInput();
+  const default_kvs = await Apify.getInput();
+  if (typeof default_kvs.dataset !== 'number') {
+    throw new Error('Must provide "dataset" in INPUT.json');
+  }
+
+  const input = require(`./input_files/INPUT${default_kvs.dataset}.json`);
   if (!(input.search && input.search.trim().length > 0) && !input.zipcodes) {
     throw new Error('Either "search" or "zipcodes" attribute has to be set!');
   }
+
+  // Create dataset
+  const dataset = await Apify.openDataset(`dataset-${default_kvs.dataset}`);
 
   // Initialize minimum time
   const minTime = input.minDate ? (parseInt(input.minDate) || new Date(input.minDate).getTime()) : null;
 
   const saveResults = async (results) => {
     results = results.filter(result => !minTime || result.datePosted > minTime);
-    await Apify.pushData(results);
+    await dataset.pushData(results);
     state.extractedZpids.push(results.map(result => result.zpid));
   };
 

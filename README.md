@@ -42,12 +42,15 @@ apify init
 npm install
 ```
 
-8) Setup `INPUT.json`
+8) Edit `INPUT.json`
 
-- Copy one of the input files into `apify_storage/key_value_stores/default/INPUT.json`
+- Open `apify_storage/key_value_stores/default/INPUT.json`
 
-```shell
-cp input/INPUT12.json apify_storage/key_value_stores/default/INPUT.json
+- Update with your dataset:
+```json
+{ 
+  "dataset": 0
+}
 ```
 
 9) Run Apify Actor
