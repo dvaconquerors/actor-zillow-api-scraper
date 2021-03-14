@@ -1,27 +1,5 @@
 const Apify = require('apify');
 
-const ATTRIBUTES = [
-  'zpid',
-  'address',
-  'bedrooms',
-  'bathrooms',
-  'price',
-  'yearBuilt',
-  'longitude',
-  'latitude',
-  'description',
-  'livingArea',
-  'currency',
-  'homeType',
-  'timeZone',
-  'zestimate',
-  'homeFacts',
-  'taxAssessedValue',
-  'taxAssessedYear',
-  'lotSize',
-  'datePosted',
-];
-
 function pick(o, ...props) {
   return Object.assign({}, ...props.map(prop => ({[prop]: o[prop]})));
 }
@@ -68,6 +46,9 @@ const getSampleQueryId = async () => {
   const browser = await Apify.launchPuppeteer({
     useChrome: true,
     stealth: true,
+    launchOptions: {
+      headless: false,
+    },
   });
   for (let i = 0; i < 100; i++) {
     const page = await browser.newPage();
@@ -170,7 +151,7 @@ async function getMapResults(page, qs) {
   }
 
   if (searchState.cat1.searchResults.mapResults) {
-    return searchState.cat1.searchResults.mapResults;
+    return searchState.cat1.searchResults.mapResults.filter(result => result.zpid);
   } else {
     throw `No map results at ${request.url}`;
   }
@@ -192,11 +173,10 @@ Apify.main(async () => {
   // Initialize minimum time
   const minTime = input.minDate ? (parseInt(input.minDate) || new Date(input.minDate).getTime()) : null;
 
-  const saveResult = async (result) => {
-    if (!minTime || result.datePosted > minTime) {
-      await Apify.pushData(result);
-      state.extractedZpids.push(result.zpid);
-    }
+  const saveResults = async (results) => {
+    results = results.filter(result => !minTime || result.datePosted > minTime);
+    await Apify.pushData(results);
+    state.extractedZpids.push(results.map(result => result.zpid));
   };
 
   // Intercept sample QueryID
@@ -205,7 +185,7 @@ Apify.main(async () => {
   console.log('Initial settings extracted.');
 
   // Proxy connection is automatically established in the Crawler
-  const proxyConfiguration = await Apify.createProxyConfiguration();
+  // const proxyConfiguration = await Apify.createProxyConfiguration();
 
   // Create RequestQueue
   const requestQueue = await Apify.openRequestQueue();
@@ -229,13 +209,13 @@ Apify.main(async () => {
   const crawler = new Apify.PuppeteerCrawler({
     requestQueue,
 
-    proxyConfiguration,
+    // proxyConfiguration,
 
-    maxRequestRetries: 10,
+    maxRequestRetries: 3,
 
-    handlePageTimeoutSecs: 600,
+    handlePageTimeoutSecs: 120,
 
-    maxRequestsPerCrawl: 50,
+    maxRequestsPerCrawl: 750,
 
     launchContext: {
       useChrome: true,
@@ -254,29 +234,27 @@ Apify.main(async () => {
       }
 
       const numResults = Math.min(mapResults.length, input.resultsPerSearch || 500);
-      console.log(`Found ${mapResults.length} homes for ${request.url}, extracting data from ${numResults} ...`);
+      if (numResults) {
+        console.log(`Found ${mapResults.length} homes for ${request.url}, extracting data from ${numResults} ...`);
 
-      // Extract home data from mapResults
-      const start = request.userData.start || 0;
-      for (let i = start; i <= numResults; i++) {
-        const home = mapResults[i];
-        if (!home.zpid || state.extractedZpids.includes(home.zpid)) continue;
-
+        // Extract home data from mapResults
         try {
-          const result = await extractHomeData(page, home.zpid, queryId);
-          const property = pick(result, ...ATTRIBUTES);
-          await saveResult(property);
+          const homes = mapResults.slice(0, numResults);
+          const results = await Promise.all(homes.map(home => extractHomeData(page, home.zpid, queryId)));
+          await saveResults(results);
+          console.log(`Saved ${results.length} records for ${request.url} total: ${state.extractedZpids.length}`);
+
         } catch (e) {
           await crawler.browserPool.retireBrowserByPage(page);
-          await addRequest(request.url, Object.assign(request.userData, {start: i}));
+          await addRequest(request.url, request.userData);
           throw e;
         }
+      } else {
+        console.log(`Found no homes for ${request.url}`);
+      }
 
-        console.log(`Saved record for ${request.url}`);
-
-        if (input.maxItems && state.extractedZpids.length >= input.maxItems) {
-          return process.exit(0);
-        }
+      if (input.maxItems && state.extractedZpids.length >= input.maxItems) {
+        return process.exit(0);
       }
     },
     handleFailedRequestFunction: async ({request}) => {
