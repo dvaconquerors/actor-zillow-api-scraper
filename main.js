@@ -219,7 +219,7 @@ Apify.main(async () => {
 
     handlePageTimeoutSecs: 120,
 
-    maxRequestsPerCrawl: 750,
+    maxRequestsPerCrawl: 75000,
 
     launchContext: {
       useChrome: true,
