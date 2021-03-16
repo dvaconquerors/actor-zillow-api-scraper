@@ -1,5 +1,9 @@
 const Apify = require('apify');
 const S3 = require('aws-sdk/clients/s3');
+const pLimit = require('p-limit');
+
+const S3_BATCH_SIZE = 25;
+const limit = pLimit(S3_BATCH_SIZE);
 
 // Intercept home data API request and extract it's QueryID
 const interceptQueryId = page => new Promise(async (resolve, reject) => {
@@ -280,23 +284,33 @@ Apify.main(async () => {
       Bucket: input.bucket,
     });
 
-    const uploadToS3 = async (item) => {
+    const datasetInfo = await dataset.getInfo();
+
+    const uploadToS3 = async (index) => {
       try {
+        const content = await dataset.getData({offset: index, limit: 1});
+        const item = content.items[0];
+
         await s3.putObject({
           Bucket: input.bucket,
           Key: `raw-zillow-data/${datasetName}/${item.zipcode}-${item.zpid}.json`,
           Body: JSON.stringify(item),
           ContentType: 'application/json',
         }).promise();
+        if (index && index % 100 === 0) {
+          console.log(`Completed uploading ${index} of ${datasetInfo.itemCount}`);
+        }
       } catch (e) {
         throw new Error(`Unable to upload to S3: ${e.message}`);
       }
     };
 
-    const datasetInfo = await dataset.getInfo();
     if (typeof datasetInfo.itemCount === 'number') {
       console.log(`Uploading ${datasetInfo.itemCount} files to S3. This may take a while`);
-      await dataset.forEach(uploadToS3);
+
+      const array = Array.from(Array(datasetInfo.itemCount).keys());
+      await Promise.all(array.map(index => limit(() => uploadToS3(index))));
+
       console.log(`Uploaded ${datasetInfo.itemCount} files to S3.`);
     }
   } else {
